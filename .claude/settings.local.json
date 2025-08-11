@@ -1,0 +1,10 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm install:*)",
+      "WebFetch(domain:svgo.dev)",
+      "Bash(npm link:*)"
+    ],
+    "deny": []
+  }
+}

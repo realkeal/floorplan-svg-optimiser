@@ -1,0 +1,14 @@
+{
+  "name": "floorplan-svg-optimiser",
+  "version": "1.0.0",
+  "description": "SVG optimizer for floorplan files",
+  "bin": {
+    "floorplan-optim": "./floorplan-optim.js"
+  },
+  "scripts": {
+    "floorplan-optim": "node floorplan-optim.js"
+  },
+  "devDependencies": {
+    "svgo": "^4.0.0"
+  }
+}
