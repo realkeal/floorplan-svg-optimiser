@@ -8,66 +8,232 @@ const readline = require('readline');
 // Parse command line arguments
 const args = process.argv.slice(2);
 
-if (args.length === 0) {
-  console.error('Usage: floorplan-optim <input.svg> [output.svg]');
+// Check for interactive mode
+if (args.length === 0 || (args.length === 1 && (args[0] === '-i' || args[0] === '--interactive'))) {
+  // Enter interactive shell mode
+  console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+  console.log('Floorplan SVG Optimiser - Interactive Mode');
+  console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+  console.log('Commands:');
+  console.log('  <file.svg>      - Process file with default output name');
+  console.log('  <in.svg> <out.svg> - Process with custom output name');
+  console.log('  help            - Show this help');
+  console.log('  exit/quit       - Exit the shell');
+  console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+  
+  const rl = readline.createInterface({
+    input: process.stdin,
+    output: process.stdout,
+    prompt: '\nfloorplan> '
+  });
+  
+  // Store rl in global for use in customFloorplanOptimizations
+  global.interactiveRl = rl;
+  
+  rl.prompt();
+  
+  rl.on('line', async (line) => {
+    const trimmedLine = line.trim();
+    
+    if (trimmedLine === '' || trimmedLine === 'help') {
+      console.log('\nCommands:');
+      console.log('  <file.svg>      - Process file with default output name');
+      console.log('  <in.svg> <out.svg> - Process with custom output name');
+      console.log('  help            - Show this help');
+      console.log('  exit/quit       - Exit the shell');
+      rl.prompt();
+      return;
+    }
+    
+    if (trimmedLine === 'exit' || trimmedLine === 'quit') {
+      console.log('\nGoodbye!');
+      rl.close();
+      process.exit(0);
+    }
+    
+    // Parse the input as file arguments, handling quoted paths and escaped spaces
+    const shellArgs = [];
+    let current = '';
+    let inQuotes = false;
+    let quoteChar = '';
+    let escapeNext = false;
+    
+    for (let i = 0; i < trimmedLine.length; i++) {
+      const char = trimmedLine[i];
+      
+      if (escapeNext) {
+        current += char;
+        escapeNext = false;
+        continue;
+      }
+      
+      if (char === '\\') {
+        // Check if next character is a space or quote
+        if (i + 1 < trimmedLine.length && (trimmedLine[i + 1] === ' ' || trimmedLine[i + 1] === '"' || trimmedLine[i + 1] === "'")) {
+          escapeNext = true;
+        } else {
+          current += char;
+        }
+      } else if ((char === '"' || char === "'") && !escapeNext) {
+        if (!inQuotes) {
+          inQuotes = true;
+          quoteChar = char;
+        } else if (char === quoteChar) {
+          inQuotes = false;
+          quoteChar = '';
+        } else {
+          current += char;
+        }
+      } else if (char === ' ' && !inQuotes) {
+        if (current) {
+          shellArgs.push(current);
+          current = '';
+        }
+      } else {
+        current += char;
+      }
+    }
+    
+    if (current) {
+      shellArgs.push(current);
+    }
+    
+    if (shellArgs.length === 0) {
+      rl.prompt();
+      return;
+    }
+    
+    const inputFile = shellArgs[0];
+    let outputFile = shellArgs[1];
+    
+    // If no output file specified, create one with -web suffix
+    if (!outputFile) {
+      const parsedPath = path.parse(inputFile);
+      outputFile = path.join(parsedPath.dir, `${parsedPath.name}-web${parsedPath.ext}`);
+    }
+    
+    // Check if input file exists
+    if (!fs.existsSync(inputFile)) {
+      console.error(`Error: Input file "${inputFile}" not found`);
+      rl.prompt();
+      return;
+    }
+    
+    // Process the file
+    try {
+      await processFile(inputFile, outputFile, true); // Pass true for interactive mode
+    } catch (error) {
+      console.error(`Error processing file: ${error.message}`);
+    }
+    
+    rl.prompt();
+  });
+  
+  rl.on('close', () => {
+    console.log('\nGoodbye!');
+    global.interactiveRl = null;
+    process.exit(0);
+  });
+  
+  return; // Exit from main flow for interactive mode
+}
+
+// Non-interactive mode
+if (args.length === 1 && args[0] !== '-i' && args[0] !== '--interactive') {
+  // Single argument that's not interactive flag
+  processFileFromArgs(args[0], null);
+} else if (args.length === 2) {
+  // Two arguments - input and output
+  processFileFromArgs(args[0], args[1]);
+} else {
+  console.error('Usage: floorplan-optim [options] <input.svg> [output.svg]');
+  console.error('       floorplan-optim -i     (interactive mode)');
   console.error('If output is not specified, it will be saved with -web suffix');
   process.exit(1);
 }
 
-const inputFile = args[0];
-let outputFile = args[1];
+// Function to process files from command line arguments
+async function processFileFromArgs(inputFile, outputFile) {
+  // If no output file specified, create one with -web suffix
+  if (!outputFile) {
+    const parsedPath = path.parse(inputFile);
+    outputFile = path.join(parsedPath.dir, `${parsedPath.name}-web${parsedPath.ext}`);
+  }
 
-// If no output file specified, create one with -web suffix
-if (!outputFile) {
-  const parsedPath = path.parse(inputFile);
-  outputFile = path.join(parsedPath.dir, `${parsedPath.name}-web${parsedPath.ext}`);
+  // Check if input file exists
+  if (!fs.existsSync(inputFile)) {
+    console.error(`Error: Input file "${inputFile}" not found`);
+    process.exit(1);
+  }
+
+  try {
+    await processFile(inputFile, outputFile);
+  } catch (error) {
+    console.error(`Error processing file: ${error.message}`);
+    process.exit(1);
+  }
 }
 
-// Check if input file exists
-if (!fs.existsSync(inputFile)) {
-  console.error(`Error: Input file "${inputFile}" not found`);
-  process.exit(1);
-}
+// Main processing function
+async function processFile(inputFile, outputFile, isInteractive = false) {
+  // Read the SVG file
+  let svgContent;
+  try {
+    svgContent = fs.readFileSync(inputFile, 'utf8');
+  } catch (error) {
+    throw new Error(`Error reading file: ${error.message}`);
+  }
 
-// Read the SVG file
-let svgContent;
-try {
-  svgContent = fs.readFileSync(inputFile, 'utf8');
-} catch (error) {
-  console.error(`Error reading file: ${error.message}`);
-  process.exit(1);
-}
-
-// SVGO configuration with customizations
-const svgoConfig = {
-  multipass: true,
-  plugins: [
-    {
-      name: 'preset-default',
-      params: {
-        overrides: {
-          cleanupIds: false,
-          removeUselessDefs: false,
+  // SVGO configuration with customizations
+  const svgoConfig = {
+    multipass: true,
+    plugins: [
+      {
+        name: 'preset-default',
+        params: {
+          overrides: {
+            cleanupIds: false,
+            removeUselessDefs: false,
+          },
         },
       },
-    },
-    // Add custom plugins here if needed
-  ],
-};
+      // Add custom plugins here if needed
+    ],
+  };
 
-// Process the SVG with SVGO
-console.error('Running SVGO optimization...');
-const result = optimize(svgContent, svgoConfig);
+  // Process the SVG with SVGO
+  console.error('Running SVGO optimization...');
+  const result = optimize(svgContent, svgoConfig);
 
-if (result.error) {
-  console.error(`SVGO error: ${result.error}`);
-  process.exit(1);
+  if (result.error) {
+    console.error(`SVGO error: ${result.error}`);
+    throw new Error(`SVGO error: ${result.error}`);
+  }
+
+  let optimizedSvg = result.data;
+
+  // Additional custom processing
+  console.error('Applying custom floorplan optimizations...');
+  
+  optimizedSvg = await customFloorplanOptimizations(optimizedSvg, isInteractive);
+
+  // Output the result
+  try {
+    fs.writeFileSync(outputFile, optimizedSvg, 'utf8');
+    console.error(`\nOptimized SVG written to: ${outputFile}`);
+    
+    // Calculate and display size reduction
+    const originalSize = Buffer.byteLength(svgContent, 'utf8');
+    const optimizedSize = Buffer.byteLength(optimizedSvg, 'utf8');
+    const reduction = ((originalSize - optimizedSize) / originalSize * 100).toFixed(2);
+    
+    console.error(`Original size: ${originalSize} bytes`);
+    console.error(`Optimized size: ${optimizedSize} bytes`);
+    console.error(`Size reduction: ${reduction}%`);
+  } catch (error) {
+    throw new Error(`Error writing file: ${error.message}`);
+  }
 }
-
-let optimizedSvg = result.data;
-
-// Additional custom processing
-console.error('Applying custom floorplan optimizations...');
 
 // Function to create readline interface for user input
 function createReadlineInterface() {
@@ -87,7 +253,7 @@ function askQuestion(rl, question) {
 }
 
 // Function to perform custom floorplan optimizations
-async function customFloorplanOptimizations(svg) {
+async function customFloorplanOptimizations(svg, isInteractive = false) {
   // 1. Convert furniture IDs to class
   console.error('Converting furniture IDs to classes...');
   svg = svg.replace(/<g\s+id="[^"]*furniture[^"]*"([^>]*)>/gi, (match, attributes) => {
@@ -197,7 +363,8 @@ async function customFloorplanOptimizations(svg) {
       console.log(`Found ${children.length} option(s) to rename`);
       console.log(`━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`);
       
-      const rl = createReadlineInterface();
+      // Use existing interactive rl if available, otherwise create new one
+      const rl = global.interactiveRl || createReadlineInterface();
       const renames = new Map();
       
       for (let i = 0; i < children.length; i++) {
@@ -213,7 +380,10 @@ async function customFloorplanOptimizations(svg) {
         }
       }
       
-      rl.close();
+      // Only close if we created our own rl (not in interactive mode)
+      if (!global.interactiveRl) {
+        rl.close();
+      }
       
       // Apply the renames and add visibility:hidden to all found options
       console.log('\nApplying changes to options...');
@@ -248,7 +418,7 @@ async function customFloorplanOptimizations(svg) {
             newAttributes = ` style="visibility:hidden"${newAttributes}`;
           }
           
-          const finalId = renames.has(oldId) ? newName.replace(/\s+/g, '_') : oldId;
+          const finalId = renames.has(oldId) ? newName : oldId;
           return `<g id="${finalId}"${newAttributes}>`;
         });
       }
@@ -274,26 +444,3 @@ async function customFloorplanOptimizations(svg) {
   
   return svg;
 }
-
-// Run the async optimization
-(async () => {
-  optimizedSvg = await customFloorplanOptimizations(optimizedSvg);
-
-  // Output the result
-  try {
-    fs.writeFileSync(outputFile, optimizedSvg, 'utf8');
-    console.error(`\nOptimized SVG written to: ${outputFile}`);
-    
-    // Calculate and display size reduction
-    const originalSize = Buffer.byteLength(svgContent, 'utf8');
-    const optimizedSize = Buffer.byteLength(optimizedSvg, 'utf8');
-    const reduction = ((originalSize - optimizedSize) / originalSize * 100).toFixed(2);
-    
-    console.error(`Original size: ${originalSize} bytes`);
-    console.error(`Optimized size: ${optimizedSize} bytes`);
-    console.error(`Size reduction: ${reduction}%`);
-  } catch (error) {
-    console.error(`Error writing file: ${error.message}`);
-    process.exit(1);
-  }
-})();
