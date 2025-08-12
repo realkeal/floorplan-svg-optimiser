@@ -252,6 +252,13 @@ function askQuestion(rl, question) {
   });
 }
 
+// Function to validate option names (no special characters)
+function isValidOptionName(name) {
+  // Allow only alphanumeric characters, hyphens, and underscores
+  const validPattern = /^[a-zA-Z0-9_-]+$/;
+  return validPattern.test(name);
+}
+
 // Function to perform custom floorplan optimizations
 async function customFloorplanOptimizations(svg, isInteractive = false) {
   // 1. Convert furniture IDs to class
@@ -370,13 +377,26 @@ async function customFloorplanOptimizations(svg, isInteractive = false) {
       for (let i = 0; i < children.length; i++) {
         const child = children[i];
         console.log(`\n[${i + 1}/${children.length}] Current ID: "${child.id}"`);
-        const newName = await askQuestion(rl, 'Enter new name (or press Enter to keep): ');
         
-        if (newName.trim()) {
-          renames.set(child.id, newName.trim());
-          console.log(`✓ Will rename to: "${newName.trim()}"`);
-        } else {
-          console.log(`✓ Keeping: "${child.id}"`);
+        let validName = false;
+        while (!validName) {
+          const newName = await askQuestion(rl, 'Enter new name (or press Enter to keep): ');
+          
+          if (newName.trim()) {
+            const trimmedName = newName.trim();
+            if (isValidOptionName(trimmedName)) {
+              renames.set(child.id, trimmedName);
+              console.log(`✓ Will rename to: "${trimmedName}"`);
+              validName = true;
+            } else {
+              console.log(`⚠️  Invalid name: "${trimmedName}"`);
+              console.log('   Names can only contain letters, numbers, hyphens (-) and underscores (_)');
+              console.log('   Please try again or press Enter to keep the original name.');
+            }
+          } else {
+            console.log(`✓ Keeping: "${child.id}"`);
+            validName = true;
+          }
         }
       }
       
