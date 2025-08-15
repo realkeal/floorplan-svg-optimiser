@@ -254,8 +254,8 @@ function askQuestion(rl, question) {
 
 // Function to validate option names (no special characters)
 function isValidOptionName(name) {
-  // Allow only alphanumeric characters, hyphens, and underscores
-  const validPattern = /^[a-zA-Z0-9_-]+$/;
+  // Allow only alphanumeric characters, spaces, hyphens, and underscores
+  const validPattern = /^[a-zA-Z0-9_\- ]+$/;
   return validPattern.test(name);
 }
 
